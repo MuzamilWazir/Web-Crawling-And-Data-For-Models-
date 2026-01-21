@@ -1,10 +1,47 @@
 # main.py
 import time
+import sys
 from crawler.sitemap_loader import load_sitemap
 from crawler.selenium_loader import SeleniumLoader
 from qa.chunker import chunk_text
 from qa.prompt import build_prompt
-from llm.ollama_llm import OllamaLLM
+
+
+def select_llm():
+    """Let user choose which LLM to use"""
+    print("\n" + "=" * 70)
+    print("SELECT LLM PROVIDER")
+    print("=" * 70)
+    print("1. Ollama (Local - Free)")
+    print("2. OpenAI (GPT-4o-mini - Paid)")
+    print("3. Claude (Anthropic - Paid)")
+    print("4. Gemini (Google - Paid)")
+    print("=" * 70)
+
+    choice = input("Enter choice (1-4): ").strip()
+
+    if choice == "1":
+        from llm.ollama_llm import OllamaLLM
+        return OllamaLLM(model="qwen2.5:3b")
+
+    elif choice == "2":
+        from llm.openai_llm import OpenAILLM
+        api_key = input("Enter OpenAI API Key (or press Enter to use env var): ").strip()
+        return OpenAILLM(model="gpt-4o-mini", api_key=api_key or None)
+
+    elif choice == "3":
+        from llm.claude_llm import ClaudeLLM
+        api_key = input("Enter Anthropic API Key (or press Enter to use env var): ").strip()
+        return ClaudeLLM(model="claude-3-5-sonnet-20241022", api_key=api_key or None)
+
+    elif choice == "4":
+        from llm.gemini_llm import GeminiLLM
+        api_key = input("Enter Google API Key (or press Enter to use env var): ").strip()
+        return GeminiLLM(model="gemini-1.5-flash", api_key=api_key or None)
+
+    else:
+        print("[ERROR] Invalid choice. Exiting.")
+        sys.exit(1)
 
 
 def run():
@@ -23,13 +60,13 @@ def run():
     print(f"[OK] Sitemap loaded — {len(urls)} URLs found "
           f"({time.time() - start:.2f}s)")
 
-    # LIMIT FOR TESTING (IMPORTANT)
+    # LIMIT FOR TESTING
     MAX_PAGES = 20
     urls = urls[:MAX_PAGES]
     print(f"[INFO] Crawling limited to first {MAX_PAGES} pages\n")
 
     # --------------------------------------------------
-    # STEP 2: Initialize Selenium (ONCE)
+    # STEP 2: Initialize Selenium
     # --------------------------------------------------
     print("[STEP 2] Initializing Selenium driver...")
     loader = SeleniumLoader(page_load_timeout=25)
@@ -49,7 +86,6 @@ def run():
             text = loader.load_page_text(url)
             chunks = chunk_text(text)
             all_chunks.extend(chunks)
-
             print(f"  ✓ Success — {len(chunks)} chunks")
 
         except Exception as e:
@@ -70,24 +106,29 @@ def run():
         return
 
     # --------------------------------------------------
-    # STEP 5: Prepare LLM context
+    # STEP 5: Prepare context
     # --------------------------------------------------
     print("\n[STEP 5] Preparing context for LLM...")
 
-    # Use more chunks but keep reasonable size
-    MAX_CHUNKS = 5  # Increased from 2
+    MAX_CHUNKS = 5
     context = "\n\n".join(all_chunks[:MAX_CHUNKS])
 
     word_count = len(context.split())
     print(f"[OK] Context prepared ({word_count} words from {min(MAX_CHUNKS, len(all_chunks))} chunks)")
 
-    if word_count > 3000:
-        print(f"[WARNING] Large context ({word_count} words). LLM may be slow.")
+    # --------------------------------------------------
+    # STEP 6: Select LLM
+    # --------------------------------------------------
+    try:
+        llm = select_llm()
+    except Exception as e:
+        print(f"[ERROR] Failed to initialize LLM: {e}")
+        return
 
     # --------------------------------------------------
-    # STEP 6: User question
+    # STEP 7: User question
     # --------------------------------------------------
-    print("\n[STEP 6] Awaiting user question...")
+    print("\n[STEP 7] Awaiting user question...")
     question = input("Ask a question: ").strip()
 
     if not question:
@@ -98,23 +139,22 @@ def run():
     print("[OK] Prompt built")
 
     # --------------------------------------------------
-    # STEP 7: LLM inference (Ollama)
+    # STEP 8: LLM inference
     # --------------------------------------------------
-    print("\n[STEP 7] Querying LLM (Ollama)...")
-    print("[TIP] This may take 30-120 seconds. Press Ctrl+C to cancel if needed.\n")
-
-    llm = OllamaLLM(model="qwen2.5:3b")
+    print("\n[STEP 8] Querying LLM...\n")
 
     start = time.time()
     try:
-        answer = llm.generate(prompt, timeout=120)  # Increased timeout
+        answer = llm.generate(prompt)
         elapsed = time.time() - start
-        print(f"\n[OK] LLM responded in {elapsed:.2f}s")
+        print(f"\n[OK] Response received in {elapsed:.2f}s")
     except KeyboardInterrupt:
-        print("\n\n[CANCELLED] User interrupted LLM generation.")
+        print("\n\n[CANCELLED] User interrupted.")
         return
     except Exception as e:
-        print(f"\n[ERROR] LLM generation failed: {e}")
+        print(f"\n[ERROR] Generation failed: {e}")
+        import traceback
+        traceback.print_exc()
         return
 
     # --------------------------------------------------

@@ -1,0 +1,13 @@
+# Core dependencies
+selenium==4.16.0
+requests==2.31.0
+beautifulsoup4==4.12.3
+lxml==5.1.0
+
+# LLM providers (install as needed)
+openai>=1.10.0           # For OpenAI
+anthropic>=0.18.0        # For Claude
+google-generativeai>=0.3.0  # For Gemini
+
+# Optional: for better output formatting
+rich==13.7.0
